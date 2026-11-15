@@ -15,72 +15,50 @@ const transactionResolver = {
         throw new Error("Error getting transactions");
       }
     },
-    transaction: async (_, { transactionId }) => {
-      try {
-        const transaction = await Transaction.findById(transactionId);
-        return transaction;
-      } catch (error) {
-        console.log("Error getting transaction:", err);
-        throw new Error("Error getting transaction");
-      }
+    transaction: async (_, { transactionId }, context) => {
+      const user = context.getUser();
+      if (!user) throw new Error("Unauthorized");
+      return Transaction.findOne({ _id: transactionId, userId: user._id });
     },
     categoryStatistics: async (_, __, context) => {
-      if (!context.getUser()) throw new Error("Unauthorized");
+      const user = context.getUser();
+      if (!user?._id) throw new Error("Unauthorized");
 
-      const userId = context.getUser()._id;
-      const transactions = await Transaction.find({ userId });
-      const categoryMap = {};
-
-      transactions.forEach((transaction) => {
-        if (!categoryMap[transaction.category]) {
-          categoryMap[transaction.category] = 0;
-        }
-        categoryMap[transaction.category] += transaction.amount;
-      });
-
-      return Object.entries(categoryMap).map(([category, totalAmount]) => ({
-        category,
-        totalAmount,
-      }));
+      // Aggregate on the database instead of loading all transactions into Node.js.
+      // Preserve the existing GraphQL response shape and per-user isolation.
+      return Transaction.aggregate([
+        { $match: { userId: user._id } },
+        { $group: { _id: "$category", totalAmount: { $sum: "$amount" } } },
+        { $project: { _id: 0, category: "$_id", totalAmount: 1 } },
+      ]);
     },
   },
   Mutation: {
     createTransaction: async (_, { input }, context) => {
-      try {
-        const newTransaction = new Transaction({
-          ...input,
-          userId: context.getUser()._id,
-        });
-        await newTransaction.save();
-        return newTransaction;
-      } catch (error) {
-        console.error("Error getting transaction:", error);
-        throw new Error("Error creating transaction");
-      }
+      const user = context.getUser();
+      if (!user) throw new Error("Unauthorized");
+      const newTransaction = new Transaction({ ...input, userId: user._id });
+      await newTransaction.save();
+      return newTransaction;
     },
-    updateTransaction: async (_, { input }) => {
-      try {
-        const updatedTransaction = await Transaction.findByIdAndUpdate(
-          input.transactionId,
-          input,
-          { new: true }
-        );
-        return updatedTransaction;
-      } catch (error) {
-        console.error("Error updating transaction:", error);
-        throw new Error("Error updating transaction");
-      }
+    updateTransaction: async (_, { input }, context) => {
+      const user = context.getUser();
+      if (!user) throw new Error("Unauthorized");
+      const { transactionId, ...changes } = input;
+      const updated = await Transaction.findOneAndUpdate(
+        { _id: transactionId, userId: user._id },
+        { $set: changes },
+        { new: true, runValidators: true }
+      );
+      if (!updated) throw new Error("Transaction not found");
+      return updated;
     },
-    deleteTransaction: async (_, { transactionId }) => {
-      try {
-        const deletedTransaction = await Transaction.findByIdAndDelete(
-          transactionId
-        );
-        return deletedTransaction;
-      } catch (error) {
-        console.error("Error deleting transaction:", error);
-        throw new Error("Error deleting transaction");
-      }
+    deleteTransaction: async (_, { transactionId }, context) => {
+      const user = context.getUser();
+      if (!user) throw new Error("Unauthorized");
+      const deleted = await Transaction.findOneAndDelete({ _id: transactionId, userId: user._id });
+      if (!deleted) throw new Error("Transaction not found");
+      return deleted;
     },
   },
   Transaction: {

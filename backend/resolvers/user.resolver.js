@@ -8,8 +8,11 @@ const userResolver = {
       try {
         const { username, name, password, gender } = input;
 
-        if (!username || !name || !password || !gender) {
-          throw new Error("All fields are required");
+        if (typeof username !== "string" || !/^[a-zA-Z0-9_.-]{3,40}$/.test(username) ||
+            typeof name !== "string" || !name.trim() || name.trim().length > 80 ||
+            typeof password !== "string" || password.length < 8 || password.length > 128 ||
+            !["male", "female"].includes(gender)) {
+          throw new Error("Invalid signup details: username 3–40 characters, name 1–80, password 8–128, valid gender required");
         }
         const existingUser = await User.findOne({ username });
         if (existingUser) {
@@ -24,7 +27,7 @@ const userResolver = {
 
         const newUser = new User({
           username,
-          name,
+          name: name.trim(),
           password: hashedPassword,
           gender,
           profilePicture: gender === "male" ? boyProfilePic : girlProfilePic,
@@ -33,7 +36,7 @@ const userResolver = {
         await context.login(newUser);
         return newUser;
       } catch (err) {
-        console.log("Error in signUp: ", err);
+        console.error("Signup failed:", err.name);
         throw new Error(err.message || "Internal server error");
       }
     },
@@ -41,7 +44,7 @@ const userResolver = {
     login: async (_, { input }, context) => {
       try {
         const { username, password } = input;
-        if (!username || !password) throw new Error("All fields are required");
+        if (typeof username !== "string" || typeof password !== "string" || !username || !password) throw new Error("Invalid username or password");
         const { user } = await context.authenticate("graphql-local", {
           username,
           password,
@@ -50,23 +53,17 @@ const userResolver = {
         await context.login(user);
         return user;
       } catch (err) {
-        console.log("Error in login: ", err);
+        console.error("Login failed:", err.name);
         throw new Error(err.message || "Internal server error");
       }
     },
     logout: async (_, __, context) => {
-      try {
-        await context.logout();
-        context.req.session.destroy((err) => {
-          if (err) throw err;
-        });
-        context.res.clearCookie("connect.sid");
-
-        return { message: "Logged out successfully" };
-      } catch (error) {
-        console.log("Error in logout: ", err);
-        throw new Error(err.message || "Internal server error");
+      await context.logout();
+      if (context.req.session) {
+        await new Promise((resolve, reject) => context.req.session.destroy(err => err ? reject(err) : resolve()));
       }
+      context.res.clearCookie("spendwise.sid", { path: "/", sameSite: "lax", secure: process.env.NODE_ENV === "production" });
+      return { message: "Logged out successfully" };
     },
   },
   Query: {
@@ -79,14 +76,11 @@ const userResolver = {
         throw new Error(err.message || "Internal server error");
       }
     },
-    user: async (_, { userId }) => {
-      try {
-        const user = await User.findById(userId);
-        return user;
-      } catch (err) {
-        console.log("Error in user query: ", err);
-        throw new Error(err.message || "Error getting user");
-      }
+    user: async (_, { userId }, context) => {
+      const current = context.getUser();
+      if (!current?._id) throw new Error("Unauthorized");
+      if (String(current._id) !== String(userId)) throw new Error("Forbidden");
+      return User.findById(current._id);
     },
   },
   User: {

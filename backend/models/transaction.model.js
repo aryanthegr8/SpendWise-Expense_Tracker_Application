@@ -34,6 +34,9 @@ const transactionSchema = new mongoose.Schema({
   },
 });
 
+// Supports user-scoped transaction history and date-based queries.
+transactionSchema.index({ userId: 1, date: -1 });
+
 const Transaction = mongoose.model("Transaction", transactionSchema);
 
 export default Transaction;

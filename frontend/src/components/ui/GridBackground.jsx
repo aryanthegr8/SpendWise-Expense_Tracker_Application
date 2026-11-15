@@ -1,9 +1,7 @@
-const GridBackground = ({ children }) => {
-  return (
-    <div className="w-full bg-black text-white bg-grid-white/[0.2] relative">
-      <div className="absolute pointer-events-none inset-0 bg-black [mask-image:radial-gradient(ellipse_at_center,transparent_20%,black)]"></div>
-      {children}
-    </div>
-  );
-};
+const GridBackground = ({ children }) => (
+  <div className="sw-app min-h-screen text-slate-100">
+    <div className="sw-glow pointer-events-none fixed inset-0" aria-hidden="true" />
+    <div className="relative min-h-screen">{children}</div>
+  </div>
+);
 export default GridBackground;
