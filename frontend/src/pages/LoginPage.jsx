@@ -1,7 +1,7 @@
 import { friendlyError } from "../utils/friendlyError";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useMutation } from "@apollo/client";
+import { useApolloClient, useMutation } from "@apollo/client";
 import { FiArrowRight, FiEye, FiEyeOff, FiLock, FiUser } from "react-icons/fi";
 import toast from "react-hot-toast";
 import AuthLayout from "../components/AuthLayout";
@@ -11,12 +11,23 @@ const inputClass = "w-full rounded-xl border border-[#30374b] bg-[#101524] py-3 
 export default function LoginPage() {
   const [loginData, setLoginData] = useState({ username: "", password: "" });
   const [showPassword, setShowPassword] = useState(false);
-  const [login, { loading }] = useMutation(LOGIN, { refetchQueries: ["GetAuthenticatedUser"] });
+  // const [login, { loading }] = useMutation(LOGIN, { refetchQueries: ["GetAuthenticatedUser"] });
+  const client = useApolloClient();
+  const [login, { loading }] = useMutation(LOGIN);
   const handleChange = (e) => setLoginData(prev => ({ ...prev, [e.target.name]: e.target.value }));
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!loginData.username.trim() || !loginData.password) return toast.error("Please fill in all fields");
-    try { await login({ variables: { input: loginData } }); }
+    try { await login({ variables: { input: loginData } });
+
+      // Remove cached data belonging to the previous account.
+      await client.clearStore();
+
+      // Fetch the identity associated with the new session.
+      await client.refetchQueries({
+        include: ["GetAuthenticatedUser"],
+      }); 
+    }
     catch (error) { console.error("Error logging in:", error); toast.error(friendlyError(error)); }
   };
   return <AuthLayout mode="login">

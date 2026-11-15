@@ -1,7 +1,7 @@
 import { friendlyError } from "../../utils/friendlyError";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { useMutation } from "@apollo/client";
+import { useApolloClient, useMutation } from "@apollo/client";
 import { FiChevronDown, FiCreditCard, FiLogOut, FiUser } from "react-icons/fi";
 import toast from "react-hot-toast";
 import { LOGOUT } from "../../graphql/mutations/user.mutation";
@@ -10,10 +10,9 @@ export default function Header({ user }) {
   const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
   const menuRef = useRef(null);
-  const [logout, { loading: signingOut }] = useMutation(LOGOUT, {
-    refetchQueries: ["GetAuthenticatedUser"],
-    awaitRefetchQueries: true,
-  });
+  const client = useApolloClient();
+
+  const [logout, { loading: signingOut }] = useMutation(LOGOUT);
 
   const displayName = user?.name?.trim() || user?.username || "My account";
   const initials = displayName.split(/\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("");
@@ -39,10 +38,21 @@ export default function Header({ user }) {
   const handleLogout = async () => {
     try {
       await logout();
+
+      // Clear financial data from the previous account.
+      await client.clearStore();
+
+      // Confirm the server now considers the user logged out.
+      await client.refetchQueries({
+        include: ["GetAuthenticatedUser"],
+      });
+
       setOpen(false);
       toast.success("Signed out successfully");
     } catch (error) {
-      toast.error(friendlyError(error, "Unable to sign out. Please try again."));
+      toast.error(
+        friendlyError(error, "Unable to sign out. Please try again.")
+      );
     }
   };
 

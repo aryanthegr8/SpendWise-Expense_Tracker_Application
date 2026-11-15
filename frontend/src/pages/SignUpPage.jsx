@@ -1,7 +1,7 @@
 import { friendlyError } from "../utils/friendlyError";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useMutation } from "@apollo/client";
+import { useApolloClient, useMutation } from "@apollo/client";
 import { FiArrowRight, FiEye, FiEyeOff, FiLock, FiUser } from "react-icons/fi";
 import toast from "react-hot-toast";
 import AuthLayout from "../components/AuthLayout";
@@ -11,12 +11,20 @@ const inputClass = "w-full rounded-xl border border-[#30374b] bg-[#101524] py-3 
 export default function SignUpPage() {
   const [signUpData, setSignUpData] = useState({ name: "", username: "", password: "", gender: "" });
   const [showPassword, setShowPassword] = useState(false);
-  const [signup, { loading }] = useMutation(SIGN_UP, { refetchQueries: ["GetAuthenticatedUser"] });
+  const client = useApolloClient();
+  const [signup, { loading }] = useMutation(SIGN_UP);
   const handleChange = (e) => setSignUpData(prev => ({ ...prev, [e.target.name]: e.target.value }));
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!signUpData.name.trim() || !signUpData.username.trim() || !signUpData.password || !signUpData.gender) return toast.error("Please complete all fields");
-    try { await signup({ variables: { input: signUpData } }); }
+    try { await signup({ variables: { input: signUpData } });
+
+      await client.clearStore();
+
+      await client.refetchQueries({
+        include: ["GetAuthenticatedUser"],
+      }); 
+    }
     catch (error) { console.error("Error signing up:", error); toast.error(friendlyError(error)); }
   };
   return <AuthLayout mode="signup">
